@@ -1,2 +1,117 @@
-# TypeScript-best-practices
-TypeScript best practices
+# TypeScript best practices
+This is a guide to the best practices to follow when creating typing files. There are a variety of different ways that typing files can be constructed. Different approaches can be used - this is intended as a guide to what approaches make sense in certain scenarios.
+
+Also, it's a steer on how to deal with limitations in TypeScript. As much as it hurts to say it, TypeScript v1.0 is not flawless. There are certain minor flaws / shortcomings in the language which have implicatations for how typings are created. Here we will detail those limitations, how they can be worked around at present and how you can best vote for improvements in the language on the TypeScript site.
+
+## Ghost modules
+
+Also called `non-instantiated` modules. Instead of polluting the global namespace with many interfaces, it is okay to create a module that contains interfaces only. This does not introduce a variable on the global namespace (see safety in below sample) and this module can only be used for types.
+
+```javascript
+// this pattern has 3 name in top level
+interface NodeFoo { }
+interface NodeBar { }
+interface NodeBuzz { }
+
+// this ghost module has 1 name in top level
+declare module NodeJS {
+    interface Foo { }
+    interface Bar { }
+    interface Buzz { }
+}
+
+// safety!
+var n = NodeJS; // TS Error : Could not find symbol NodeJS
+```
+This also allows you to open up further customization in external modules as interfaces declared inside external module declarations cannot be extended e.g. the following is good as people can customize `foo` further in other library definitions.
+
+```javascript
+// Usage when declaring an external module
+declare module 'foo' {
+    var foo: NodeJS.Foo;
+    export = foo;
+}
+```
+## Extending built-in types
+There isn't a way to add static members to native objects at the moment as `lib.d.ts` defines them as a `var Date:{/*members*/}` and `vars` are not extendable. Two solutions are proposed to the TS team. Either use interfaces instead of var in lib.d.ts (vote) and/or make variables/classes open ended (vote)
+
+For adding members to `instances of native types there are relevant interfaces` in available in `lib.d.ts` e.g.
+
+```javascript
+// add members to Date instances
+interface Date {
+    newMember: number;
+}
+
+// usage
+var foo = new Date();
+foo.newMember = 123; // okay
+```
+## Getter / Setter
+Instead of :
+```javascript
+declare function duration(value?: number): any;
+```
+better to do:
+```javascript
+declare function duration(): number;
+declare function duration(value: number): void;
+```
+## Fluent
+Pretty self explanatory:
+
+```javascript
+interface Something {
+   foo(): Something;
+   bar(): Something;
+}
+```
+
+## Callback signatures
+Do not mark callback arguments as optional if they are passed in everytime by the calling code. Also leave the return as any if the calling code doesn't care. For example in the following good declaration `foo` is the calling code we are declaring that always calls with `bar` and bas and doesn't care of the callback return value:
+```javascript
+declare function foo(callback: (bar: any, bas: any) => any): void;
+
+// Usage is as expected by a JavaScript developer
+foo(() => { });
+foo((bar) => 123);
+foo((bar, bas) => '');
+```
+A wrong way to model it would be as shown below as it enforces restrictions the original calling code doesn't impose:
+
+```javascript
+declare function foo(callback: (bar?: any, bas?: any) => void);
+```
+
+## Function Overloading
+A Union Type (any for now) is needed only for config object bags. For functions / constructors use function overloading e.g.
+
+```javascript
+declare class Foo {
+    constructor(foo: number);
+    constructor(foo: string);
+}
+
+new Foo(123); // okay
+new Foo('123'); // okay
+new Foo(true); // Error
+```
+
+## Overload Ordering
+Code with overloads must be manually sorted from the tightest/more-specific overload to loosest. See example below:
+
+```javascript
+interface Parent { x; }
+interface Child extends Parent { y; }
+
+function foo(p: Child): Child;
+function foo(p: Parent): Parent;
+function foo(p: any): any;
+function foo(p: any) { return p; }
+
+var a = foo({ x: 3, y: 4 }); // a: Child
+var b = foo({ x: 5 }); // b: Parent
+
+var y: any;
+var c = foo(y); // c: any
+```
